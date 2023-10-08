@@ -54,7 +54,13 @@ for ((i = 0; i < ${#sample_id[@]}; i++)); do
  # find manual alignemnt file
  json_f=$(find $jsons_main_dir -type f -name "$current_sample_id*.json")
 # find image
- tiff_f=$(find $tiffs_main_dir -type f -name "$current_sample_id*.tiff")
+ tiff_f=$(find $tiffs_main_dir -type f -name "$current_sample_id*.tif")
+
+echo $current_sample_id
+echo $current_original_id
+echo $fastq_dir
+echo $json_f
+echo $tiff_f
 
   # run spaceranger
   spaceranger count \
@@ -68,5 +74,6 @@ for ((i = 0; i < ${#sample_id[@]}; i++)); do
     --darkimage $tiff_f \
     --localcores 30 \
     --localmem 57 \
-    --no-bam
+    --no-bam \
+    --nosecondary
 done

@@ -9,7 +9,7 @@ suppressPackageStartupMessages({
 # sranger_path has to contain subdirectories outs and outs/spatial
 make_seurat_from_sranger <- function(sranger_path, sample, out_seurat_f, overwrite = FALSE){
 
-  if(file.exists(out_seurat_f) & overwrite = FALSE){
+  if(file.exists(out_seurat_f) & overwrite == FALSE){
    message("Reading spatial Seuart object for ", sample)
    readRDS(out_seurat_f)
   }else{

@@ -1,0 +1,49 @@
+---
+title: "Spatial QC"
+author: "Marusa Koderman"
+date: "2023-10-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r helpers}
+source('code/00st_utils.R')
+
+```
+
+```{r inputs}
+# metadata
+meta_f = 'data/metadata/metadata.csv'
+# define all paths to spaceranger outputs
+sranger_fs = list.files('output/01st_spaceranger', pattern = "sranger_.*", full.names = TRUE, recursive = FALSE)
+names(sranger_fs) = gsub(".*\\/01st_spaceranger\\/sranger_(.+)$", "\\1", sranger_fs)
+
+```
+
+```{r read_inputs}
+meta = read.csv(meta_f)
+```
+
+```{r outputs}
+out_dir = 'output/02st_sampleQC'
+
+# define output seurat file paths
+unfilt_srat_out_paths = lapply(names(sranger_fs), function(s) file.path(out_dir, paste0(s, '_unfiltered_seurat.rds')))
+# define qc outputs (list of barcodes that pass qc)
+spots_to_keep_out_paths = lapply(names(sranger_fs), function(s) file.path(out_dir, paste0(s, '_spots_to_keep.csv')))
+
+```
+
+
+```{r create_seurat_objects}
+seu_obj_l = mapply(sranger_path = sranger_fs, 
+                   sample = names(sranger_fs), 
+                   out_seurat_f = unfilt_srat_out_paths, 
+                   FUN = make_seurat_from_sranger,
+                   overwrite = FALSE)
+
+```
+

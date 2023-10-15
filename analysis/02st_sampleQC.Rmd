@@ -6,11 +6,15 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+library(testit)
+library(SeuratObject)
+library(gridExtra)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r helpers}
 source('code/00st_utils.R')
+source('code/02st_sampleQC.R')
 
 ```
 
@@ -18,32 +22,159 @@ source('code/00st_utils.R')
 # metadata
 meta_f = 'data/metadata/metadata.csv'
 # define all paths to spaceranger outputs
-sranger_fs = list.files('output/01st_spaceranger', pattern = "sranger_.*", full.names = TRUE, recursive = FALSE)
-names(sranger_fs) = gsub(".*\\/01st_spaceranger\\/sranger_(.+)$", "\\1", sranger_fs)
+# sranger_fs = list.files('output/01st_spaceranger', pattern = "sranger_.*", full.names = TRUE, recursive = FALSE)
+# names(sranger_fs) = gsub(".*\\/01st_spaceranger\\/sranger_(.+)$", "\\1", sranger_fs)
+
+# files with spot annotations
+spot_anno_fs = list.files('data/spot_region_annotations', pattern = ".*region_annotations.csv", full.names = TRUE, recursive = FALSE)
+names(spot_anno_fs) = gsub(".*spot_region_annotations\\/(.+)_region_.*", "\\1", spot_anno_fs)
 
 ```
 
 ```{r read_inputs}
 meta = read.csv(meta_f)
+spot_anno = lapply(spot_anno_fs, FUN = read.csv)
 ```
 
 ```{r outputs}
 out_dir = 'output/02st_sampleQC'
 
 # define output seurat file paths
-unfilt_srat_out_paths = lapply(names(sranger_fs), function(s) file.path(out_dir, paste0(s, '_unfiltered_seurat.rds')))
+unfilt_srat_out_paths = lapply(names(spot_anno_fs), function(s) file.path(out_dir, paste0(s, '_unfiltered_seurat.rds')))
 # define qc outputs (list of barcodes that pass qc)
-spots_to_keep_out_paths = lapply(names(sranger_fs), function(s) file.path(out_dir, paste0(s, '_spots_to_keep.csv')))
+spots_to_keep_out_paths = lapply(names(spot_anno_fs), function(s) file.path(out_dir, paste0(s, '_spots_to_keep.csv')))
+# f with merged seurat object (all_samples)
+
+merged_seu_f = file.path(out_dir, 'merged_seurat_qc_filtered.rds')
 
 ```
 
 
 ```{r create_seurat_objects}
-seu_obj_l = mapply(sranger_path = sranger_fs, 
-                   sample = names(sranger_fs), 
+seu_obj_l = mapply(sample = names(spot_anno_fs), 
                    out_seurat_f = unfilt_srat_out_paths, 
                    FUN = make_seurat_from_sranger,
+                   MoreArgs = list(sranger_path = NULL), 
                    overwrite = FALSE)
 
 ```
+
+```{r add_spot_and_sample_meta}
+# add spot annotations
+seu_obj_l = mapply(seu = seu_obj_l, 
+                   anno = spot_anno,
+                   FUN = function(seu, anno){
+                     rownames(anno) = anno$Barcode
+                     seu = AddMetaData(seu, anno)
+                   }, SIMPLIFY = FALSE)
+
+
+# add sample metadata
+seu_obj_l = mapply(seu = seu_obj_l, 
+                   id = names(seu_obj_l), 
+                   FUN = function(seu, id){
+                     id_meta = meta %>% filter(sample_id == id)
+                     
+                     # check that there is only one row in filtered metadata
+                     assert('Duplicated sample ids', nrow(id_meta) == 1)
+                     
+                     seu$sample_id = id_meta$sample_id
+                     seu$timepoint = id_meta$timepoint
+                     seu$strain = id_meta$strain
+                     seu$sex = id_meta$sex
+                     seu$batch = id_meta$batch
+                     
+                     return(seu)
+                   }, 
+                   SIMPLIFY = FALSE)
+
+```
+
+```{r add_qc_to_meta}
+
+seu_obj_l_w_qc = lapply(seu_obj_l, 
+                        FUN = get_spot_qc)
+
+# merge metadata for all samples
+meta_w_qc = lapply(seu_obj_l_w_qc, function(s) s@meta.data) %>%
+  bind_rows()
+
+```
+
+```{r make_qc_plots}
+
+# define thresholds
+thrs = c('nCount_Spatial' = 500, 'nFeature_Spatial' = 300, 'mito_pct' = 0.20)
+
+# qc violin plot
+qc_violin = qc_violin_plot(meta_w_qc, thr_vec = thrs)
+```
+
+```{r get_filtered_seurat}
+
+# append remove column to seurat
+
+seu_obj_l_w_qc = lapply(seu_obj_l_w_qc, FUN = function(seu){
+  seu@meta.data = seu@meta.data %>%
+    mutate(remove = case_when(nCount_Spatial < thrs['nCount_Spatial'] | nFeature_Spatial < thrs['nFeature_Spatia'] | mito_pct > thrs['mito_pct'] ~ TRUE, 
+                              TRUE ~FALSE))
+  
+  return(seu)
+})
+
+
+# filter seurat object and merge
+seu_obj_l_filt = lapply(seu_obj_l_w_qc, function(seu){
+  seu_filt = subset(seu, subset = remove == FALSE)
+  sample_id = unique(seu_filt@meta.data$sample_id)
+  new_cells = paste(sample_id, colnames(seu_filt), sep = '_')
+  seu_filt = RenameCells(seu_filt, new.names = new_cells)
+  seu_filt
+})
+
+# merge seurat objects
+merged_seu = merge(seu_obj_l_filt$ME7_30, seu_obj_l_filt$mNS_30)
+
+for(i in 3:length(seu_obj_l_filt)){
+  
+  merged_seu = merge(merged_seu, seu_obj_l_filt[[i]])
+  
+}
+
+```
+
+```{r check_removed}
+all_removed_plots = lapply(seu_obj_l_w_qc, function(seu){
+  SpatialDimPlot(seu, group.by = 'remove') +
+    scale_fill_manual(values = c('lightblue', 'red'), breaks = c(FALSE, TRUE)) +
+    labs(title = unique(seu@meta.data$sample_id))
+})
+
+do.call('grid.arrange', all_removed_plots)
+# print numbers of removed spots
+
+all_removed_counts = sapply(seu_obj_l_w_qc, function(seu) nrow(seu@meta.data %>% filter(remove == TRUE)))
+
+```
+
+```{r get_good_barcodes}
+good_barcodes_dfs = lapply(seu_obj_l_filt, function(seu){
+  seu@meta.data %>% dplyr::select(Barcode, sample_id)
+})
+```
+
+
+```{write outputs}
+saveRDS(merged_seu, merged_seu_f)
+
+mapply(gs = good_barcodes_dfs, out_f = spots_to_keep_out_paths, 
+       FUN = function(gs, out_f){
+         write.csv(gs, out_f, row.names = FALSE, quote = FALSE)
+       }, SIMPLIFY = FALSE)
+
+```
+
+
+
+
 

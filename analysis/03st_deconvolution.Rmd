@@ -1,0 +1,45 @@
+---
+title: "Devonvolution with STdeconvolve"
+author: "Marusa Koderman"
+date: "2023-10-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r helpers}
+source('code/00st_utils.R')
+```
+
+```{r inputs}
+# metadata
+meta_f = 'data/metadata/metadata.csv'
+# define all paths to spaceranger outputs
+sranger_fs = list.files('output/01st_spaceranger', pattern = "sranger_.*", full.names = TRUE, recursive = FALSE)
+names(sranger_fs) = gsub(".*\\/01st_spaceranger\\/sranger_(.+)$", "\\1", sranger_fs)
+```
+
+```{r read_inputs}
+meta = read.csv(meta_f)
+```
+
+```{r outputs}
+out_dir = 'output/03st_deconvolution'
+
+# define output spe file paths
+unfilt_spe_out_paths = lapply(names(sranger_fs), function(s) file.path(out_dir, paste0(s, '_unfiltered_spe.rds')))
+
+
+```
+
+
+```{r create_spe_objects}
+sp_obj_l = mapply(sranger_path = sranger_fs, 
+                  sample = names(sranger_fs), 
+                   out_spe_f = unfilt_spe_out_paths, 
+                   FUN = make_spe_from_sranger,
+                   overwrite = FALSE)
+
+```

@@ -3,6 +3,7 @@ suppressPackageStartupMessages({
   library(data.table)
   library(Seurat)
   library(SpatialExperiment)
+  library(DropletUtils)
 })
 
 # make a seurat object from spaceranger outputs
@@ -66,7 +67,7 @@ make_spe_from_sranger <- function(sranger_path, sample, out_spe_f, overwrite = F
     sample_id = sample)
 
   # read in spatial coordinates
-  spatial_coords_f <- file.path(sranger_spatial, "tissue_positions_list.csv")
+  spatial_coords_f <- file.path(sranger_spatial, "tissue_positions.csv")
   xyz <- read.csv(spatial_coords_f, header = TRUE,
                   col.names = c(
                     "barcode", "in_tissue", "array_row", "array_col",
@@ -78,14 +79,16 @@ make_spe_from_sranger <- function(sranger_path, sample, out_spe_f, overwrite = F
   xyz_filt = xyz_filt[match(colnames(sce), xyz_filt$barcode), ]
 
   # construct observation & feature metadata
-  rd <- S4Vectors::DataFrame(
-    symbol = rowData(sce)$Symbol)
+  # rd <- S4Vectors::DataFrame(
+  #   symbol = rowData(sce)$Symbol)
+
+  rd = rowData(sce)
 
   # construct 'SpatialExperiment'
   spe <- SpatialExperiment(
-    assays = list(counts = assay(sce)),
+    assays = list(counts = counts(sce)),
     rowData = rd,
-    colData = DataFrame(xyz),
+    colData = DataFrame(xyz_filt),
     spatialCoordsNames = c("pxl_col_in_fullres", "pxl_row_in_fullres"),
     imgData = img,
     sample_id = sample)

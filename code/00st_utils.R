@@ -84,9 +84,15 @@ make_spe_from_sranger <- function(sranger_path, sample, out_spe_f, overwrite = F
 
   rd = rowData(sce)
 
+ rownames(rd) = paste(rd$Symbol, rd$ID, sep = '_')
+
+  counts = counts(sce)
+  colnames(counts) = paste(sample, colnames(counts), sep = '_')
+  rownames(counts) = rownames(rd)
+
   # construct 'SpatialExperiment'
   spe <- SpatialExperiment(
-    assays = list(counts = counts(sce)),
+    assays = list(counts = counts),
     rowData = rd,
     colData = DataFrame(xyz_filt),
     spatialCoordsNames = c("pxl_col_in_fullres", "pxl_row_in_fullres"),
@@ -99,5 +105,3 @@ make_spe_from_sranger <- function(sranger_path, sample, out_spe_f, overwrite = F
 
   }
 }
-
-

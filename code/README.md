@@ -1,3 +1,3 @@
 # Code
 
-Save command-line scripts and shared R code here.
+Save command-line scripts and shared code here.
